@@ -3,12 +3,14 @@
 #include <reent.h>
 #include "FreeRTOS.h"
 #include "task.h"
+#include "debug.h"
 
-/* printf() output goes here: route it to your UART driver */
+/* printf() output goes to the debug console (stdout and stderr) */
 int _write(int fd, const char *buf, int len)
 {
-    (void)fd;
-    (void)buf;
+    if ((fd == 1 || fd == 2) && len > 0) {
+        debug_write(buf, (size_t)len);
+    }
     return len;
 }
 

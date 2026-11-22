@@ -1,14 +1,18 @@
 cmake_minimum_required(VERSION 3.20)
 
 set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/cmake/arm-none-eabi.cmake)
+
 project(stm32g431_driver C ASM)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
+
 if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 set(CMAKE_C_FLAGS_DEBUG "-Og -g3")
+
 
 set(TP ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
 

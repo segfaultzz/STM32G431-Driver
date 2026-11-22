@@ -49,6 +49,12 @@ typedef struct {
   uint8_t af;
 } gpio_config_t;
 
+/*
+ * All functions return ERR_OK on success, ERR_NULL_PTR for a NULL port/pointer,
+ * ERR_GPIO_NO_PINS for an empty pin mask, ERR_GPIO_BAD_* for an out-of-range
+ * setting and ERR_GPIO_LOCK_FAILED if gpio_lock_pin() didn't take effect.
+ */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -69,7 +75,7 @@ err_t gpio_init(GPIO_TypeDef *port, const gpio_config_t *config);
  *
  * @param port Pointer to the GPIO port (e.g., GPIOA, GPIOB, etc.).
  * @param pins Bitmask of the pins to reset (e.g., GPIO_PIN_0 | GPIO_PIN_1).
- * @return ERR_OK if successful, ERR_INVALID_PARAM if port is NULL or pins is 0.
+ * @return ERR_OK, ERR_NULL_PTR if port is NULL, ERR_GPIO_NO_PINS if pins is 0.
  *
  * @warning Don't reset PA13/PA14 (SWDIO/SWCLK): the debugger loses the chip
  *          until the next connect-under-reset.

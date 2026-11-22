@@ -21,40 +21,70 @@ static void write_fields(volatile uint32_t *reg, uint16_t pins, uint32_t width, 
 }
 
 err_t gpio_set_mode(GPIO_TypeDef *port, uint16_t pins, gpio_mode_t mode){
-    if(port == NULL || pins == 0U || mode > GPIO_MODE_ANALOG){
-        return ERR_INVALID_PARAM;
+    if(port == NULL){
+        return ERR_NULL_PTR;
+    }
+    if(pins == 0U){
+        return ERR_GPIO_NO_PINS;
+    }
+    if(mode > GPIO_MODE_ANALOG){
+        return ERR_GPIO_BAD_MODE;
     }
     write_fields(&port->MODER, pins, 2U, (uint32_t)mode);
     return ERR_OK;
 }
 
 err_t gpio_set_pull(GPIO_TypeDef *port, uint16_t pins, gpio_pull_t pull){
-    if(port == NULL || pins == 0U || pull > GPIO_PULL_DOWN){
-        return ERR_INVALID_PARAM;
+    if(port == NULL){
+        return ERR_NULL_PTR;
+    }
+    if(pins == 0U){
+        return ERR_GPIO_NO_PINS;
+    }
+    if(pull > GPIO_PULL_DOWN){
+        return ERR_GPIO_BAD_PULL;
     }
     write_fields(&port->PUPDR, pins, 2U, (uint32_t)pull);
     return ERR_OK;
 }
 
 err_t gpio_set_output_type(GPIO_TypeDef *port, uint16_t pins, gpio_otype_t otype){
-    if(port == NULL || pins == 0U || otype > GPIO_OTYPE_OPEN_DRAIN){
-        return ERR_INVALID_PARAM;
+    if(port == NULL){
+        return ERR_NULL_PTR;
+    }
+    if(pins == 0U){
+        return ERR_GPIO_NO_PINS;
+    }
+    if(otype > GPIO_OTYPE_OPEN_DRAIN){
+        return ERR_GPIO_BAD_OTYPE;
     }
     write_fields(&port->OTYPER, pins, 1U, (uint32_t)otype);
     return ERR_OK;
 }
 
 err_t gpio_set_output_speed(GPIO_TypeDef *port, uint16_t pins, gpio_speed_t speed){
-    if(port == NULL || pins == 0U || speed > GPIO_SPEED_VERY_HIGH){
-        return ERR_INVALID_PARAM;
+    if(port == NULL){
+        return ERR_NULL_PTR;
+    }
+    if(pins == 0U){
+        return ERR_GPIO_NO_PINS;
+    }
+    if(speed > GPIO_SPEED_VERY_HIGH){
+        return ERR_GPIO_BAD_SPEED;
     }
     write_fields(&port->OSPEEDR, pins, 2U, (uint32_t)speed);
     return ERR_OK;
 }
 
 err_t gpio_set_af(GPIO_TypeDef *port, uint16_t pins, uint8_t af){
-    if(port == NULL || pins == 0U || af > 15U){
-        return ERR_INVALID_PARAM;
+    if(port == NULL){
+        return ERR_NULL_PTR;
+    }
+    if(pins == 0U){
+        return ERR_GPIO_NO_PINS;
+    }
+    if(af > 15U){
+        return ERR_GPIO_BAD_AF;
     }
     /* AFR[0] holds pins 0..7, AFR[1] pins 8..15, 4 bits each */
     uint16_t low = pins & 0x00FFU;
@@ -69,8 +99,11 @@ err_t gpio_set_af(GPIO_TypeDef *port, uint16_t pins, uint8_t af){
 }
 
 err_t gpio_init(GPIO_TypeDef *port, const gpio_config_t *config){
-    if(port == NULL || config == NULL || config->pins == 0U){
-        return ERR_INVALID_PARAM;
+    if(port == NULL || config == NULL){
+        return ERR_NULL_PTR;
+    }
+    if(config->pins == 0U){
+        return ERR_GPIO_NO_PINS;
     }
     err_t err;
 
@@ -89,8 +122,11 @@ err_t gpio_init(GPIO_TypeDef *port, const gpio_config_t *config){
 }
 
 err_t gpio_reset_pin(GPIO_TypeDef *port, uint16_t pins){
-    if(port == NULL || pins == 0U){
-        return ERR_INVALID_PARAM;
+    if(port == NULL){
+        return ERR_NULL_PTR;
+    }
+    if(pins == 0U){
+        return ERR_GPIO_NO_PINS;
     }
     /* Mode first this time: the pin stops driving (analog) before the rest changes */
     write_fields(&port->MODER, pins, 2U, (uint32_t)GPIO_MODE_ANALOG);
@@ -110,8 +146,11 @@ err_t gpio_reset_pin(GPIO_TypeDef *port, uint16_t pins){
 }
 
 err_t gpio_write_pin(GPIO_TypeDef *port, uint16_t pins, uint16_t value){
-    if(port == NULL || pins == 0U){
-        return ERR_INVALID_PARAM;
+    if(port == NULL){
+        return ERR_NULL_PTR;
+    }
+    if(pins == 0U){
+        return ERR_GPIO_NO_PINS;
     }
     /* BSRR: low half sets, high half resets. Atomic, no read-modify-write */
     if(value){
@@ -130,8 +169,11 @@ uint32_t gpio_read_pin(GPIO_TypeDef *port, uint16_t pin){
 }
 
 err_t gpio_toggle_pin(GPIO_TypeDef *port, uint16_t pin){
-    if(port == NULL || pin == 0U){
-        return ERR_INVALID_PARAM;
+    if(port == NULL){
+        return ERR_NULL_PTR;
+    }
+    if(pin == 0U){
+        return ERR_GPIO_NO_PINS;
     }
     /* High pins get reset, low pins get set, in one BSRR write */
     uint32_t odr = port->ODR;
@@ -140,8 +182,11 @@ err_t gpio_toggle_pin(GPIO_TypeDef *port, uint16_t pin){
 }
 
 err_t gpio_lock_pin(GPIO_TypeDef *port, uint16_t pin){
-    if(port == NULL || pin == 0U){
-        return ERR_INVALID_PARAM;
+    if(port == NULL){
+        return ERR_NULL_PTR;
+    }
+    if(pin == 0U){
+        return ERR_GPIO_NO_PINS;
     }
     /* RM0440 lock key sequence: write 1+pins, 0+pins, 1+pins, then read twice.
      * Must not be interrupted, so interrupts are masked for these few writes.
@@ -156,12 +201,12 @@ err_t gpio_lock_pin(GPIO_TypeDef *port, uint16_t pin){
     uint32_t locked = port->LCKR & GPIO_LCKR_LCKK;
     __set_PRIMASK(primask);
 
-    return locked ? ERR_OK : ERR_TIMEOUT;
+    return locked ? ERR_OK : ERR_GPIO_LOCK_FAILED;
 }
 
 err_t gpio_write_port(GPIO_TypeDef *port, uint16_t value){
     if(port == NULL){
-        return ERR_INVALID_PARAM;
+        return ERR_NULL_PTR;
     }
     /* Set the 1 bits and reset the 0 bits in one BSRR write */
     port->BSRR = ((uint32_t)(uint16_t)~value << 16) | value;
@@ -170,7 +215,7 @@ err_t gpio_write_port(GPIO_TypeDef *port, uint16_t value){
 
 err_t gpio_read_port(GPIO_TypeDef *port, uint16_t *value){
     if(port == NULL || value == NULL){
-        return ERR_INVALID_PARAM;
+        return ERR_NULL_PTR;
     }
     *value = (uint16_t)port->IDR;
     return ERR_OK;
