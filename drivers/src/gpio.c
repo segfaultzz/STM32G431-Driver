@@ -105,18 +105,43 @@ err_t gpio_init(GPIO_TypeDef *port, const gpio_config_t *config){
     if(config->pins == 0U){
         return ERR_GPIO_NO_PINS;
     }
+    /* Validate everything before touching the hardware, so a bad field
+     * never leaves the pin half-configured */
+    if(config->mode > GPIO_MODE_ANALOG){
+        return ERR_GPIO_BAD_MODE;
+    }
+    if(config->pull > GPIO_PULL_DOWN){
+        return ERR_GPIO_BAD_PULL;
+    }
+    if(config->otype > GPIO_OTYPE_OPEN_DRAIN){
+        return ERR_GPIO_BAD_OTYPE;
+    }
+    if(config->speed > GPIO_SPEED_VERY_HIGH){
+        return ERR_GPIO_BAD_SPEED;
+    }
+    if(config->mode == GPIO_MODE_AF && config->af > 15U){
+        return ERR_GPIO_BAD_AF;
+    }
     err_t err;
 
     /* Everything else first, mode last, so the pin doesn't glitch while being set up */
     err = gpio_set_output_type(port, config->pins, config->otype);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     err = gpio_set_output_speed(port, config->pins, config->speed);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     err = gpio_set_pull(port, config->pins, config->pull);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     if(config->mode == GPIO_MODE_AF){
         err = gpio_set_af(port, config->pins, config->af);
-        if(err != ERR_OK) return err;
+        if(err != ERR_OK){
+            return err;
+        }
     }
     return gpio_set_mode(port, config->pins, config->mode);
 }
@@ -190,7 +215,18 @@ err_t gpio_lock_pin(GPIO_TypeDef *port, uint16_t pin){
     }
     /* RM0440 lock key sequence: write 1+pins, 0+pins, 1+pins, then read twice.
      * Must not be interrupted, so interrupts are masked for these few writes.
-     * The pin configuration stays frozen until the next reset. */
+     * The pin configuration stays frozen until the next reset.
+     *
+     * Once LCKK is set, the whole LCKR register is frozen: a second sequence
+     * on the same port is ignored. So only report success if the requested
+     * pins really are locked (already-locked pins count as success). */
+    uint32_t lckr = port->LCKR;
+    if((lckr & pin) == pin && (lckr & GPIO_LCKR_LCKK)){
+        return ERR_OK;
+    }
+    if(lckr & GPIO_LCKR_LCKK){
+        return ERR_GPIO_LOCK_FAILED;   /* port already frozen without these pins */
+    }
     uint32_t key = GPIO_LCKR_LCKK | pin;
     uint32_t primask = __get_PRIMASK();
     __disable_irq();
@@ -198,10 +234,13 @@ err_t gpio_lock_pin(GPIO_TypeDef *port, uint16_t pin){
     port->LCKR = pin;
     port->LCKR = key;
     (void)port->LCKR;
-    uint32_t locked = port->LCKR & GPIO_LCKR_LCKK;
+    lckr = port->LCKR;
     __set_PRIMASK(primask);
 
-    return locked ? ERR_OK : ERR_GPIO_LOCK_FAILED;
+    if((lckr & GPIO_LCKR_LCKK) && (lckr & pin) == pin){
+        return ERR_OK;
+    }
+    return ERR_GPIO_LOCK_FAILED;
 }
 
 err_t gpio_write_port(GPIO_TypeDef *port, uint16_t value){

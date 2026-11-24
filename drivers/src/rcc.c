@@ -312,20 +312,42 @@ static err_t validate(const rcc_clock_config_t *c, uint32_t *sysclk_out){
         break;
     case RCC_SYSCLK_PLL: {
         const rcc_pll_config_t *p = &c->pll;
-        if(p->src != RCC_PLLSRC_HSI16 && p->src != RCC_PLLSRC_HSE) return ERR_RCC_BAD_SOURCE;
-        if(p->m < 1U || p->m > 16U) return ERR_RCC_PLL_PARAM;
-        if(p->n < 8U || p->n > 127U) return ERR_RCC_PLL_PARAM;
-        if(p->r < 2U || p->r > 8U || (p->r & 1U)) return ERR_RCC_PLL_PARAM;
-        if(p->q != 0U && (p->q < 2U || p->q > 8U || (p->q & 1U))) return ERR_RCC_PLL_PARAM;
-        if(p->p != 0U && (p->p < 2U || p->p > 31U)) return ERR_RCC_PLL_PARAM;
+        if(p->src != RCC_PLLSRC_HSI16 && p->src != RCC_PLLSRC_HSE){
+            return ERR_RCC_BAD_SOURCE;
+        }
+        if(p->m < 1U || p->m > 16U){
+            return ERR_RCC_PLL_PARAM;
+        }
+        if(p->n < 8U || p->n > 127U){
+            return ERR_RCC_PLL_PARAM;
+        }
+        if(p->r < 2U || p->r > 8U || (p->r & 1U)){
+            return ERR_RCC_PLL_PARAM;
+        }
+        if(p->q != 0U && (p->q < 2U || p->q > 8U || (p->q & 1U))){
+            return ERR_RCC_PLL_PARAM;
+        }
+        if(p->p != 0U && (p->p < 2U || p->p > 31U)){
+            return ERR_RCC_PLL_PARAM;
+        }
 
         uint32_t in = ((p->src == RCC_PLLSRC_HSE) ? c->hse_hz : HSI16_HZ) / p->m;
-        if(in < PLL_IN_MIN_HZ || in > PLL_IN_MAX_HZ) return ERR_RCC_PLL_INPUT_RANGE;
+        if(in < PLL_IN_MIN_HZ || in > PLL_IN_MAX_HZ){
+            return ERR_RCC_PLL_INPUT_RANGE;
+        }
         uint32_t vco = in * p->n;
-        if(vco < VCO_MIN_HZ || vco > VCO_MAX_HZ) return ERR_RCC_PLL_VCO_RANGE;
-        if(vco / p->r > PLL_OUT_MAX_HZ) return ERR_RCC_PLL_OUTPUT_RANGE;
-        if(p->q != 0U && vco / p->q > PLL_OUT_MAX_HZ) return ERR_RCC_PLL_OUTPUT_RANGE;
-        if(p->p != 0U && vco / p->p > PLL_OUT_MAX_HZ) return ERR_RCC_PLL_OUTPUT_RANGE;
+        if(vco < VCO_MIN_HZ || vco > VCO_MAX_HZ){
+            return ERR_RCC_PLL_VCO_RANGE;
+        }
+        if(vco / p->r > PLL_OUT_MAX_HZ){
+            return ERR_RCC_PLL_OUTPUT_RANGE;
+        }
+        if(p->q != 0U && vco / p->q > PLL_OUT_MAX_HZ){
+            return ERR_RCC_PLL_OUTPUT_RANGE;
+        }
+        if(p->p != 0U && vco / p->p > PLL_OUT_MAX_HZ){
+            return ERR_RCC_PLL_OUTPUT_RANGE;
+        }
         sysclk = vco / p->r;
         break;
     }
@@ -362,13 +384,25 @@ static err_t pll_off(void){
     return wait_bits(&RCC->CR, RCC_CR_PLLRDY, 0U, TIMEOUT_LOOPS, ERR_RCC_PLL_TIMEOUT);
 }
 
+/* Error path of rcc_clock_config(): makes sure SYSCLK is HSI16 again (a failed
+ * switch leaves SW pointing at the new source) and that SystemCoreClock
+ * matches what is really running. Flash stays at the safe maximum latency. */
+static err_t fallback_hsi(err_t err){
+    RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_HSI;
+    (void)wait_bits(&RCC->CFGR, RCC_CFGR_SWS, RCC_CFGR_SWS_HSI, TIMEOUT_LOOPS, ERR_RCC_SWITCH_TIMEOUT);
+    SystemCoreClock = rcc_get_hclk_hz();
+    return err;
+}
+
 err_t rcc_clock_config(const rcc_clock_config_t *config){
     if(config == NULL){
         return ERR_NULL_PTR;
     }
     uint32_t sysclk;
     err_t err = validate(config, &sysclk);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
 
     uint32_t hclk = sysclk / ahb_divider((uint32_t)config->ahb_div);
     bool boost = hclk > BOOST_ABOVE_HZ;
@@ -377,17 +411,26 @@ err_t rcc_clock_config(const rcc_clock_config_t *config){
 
     /* 1. Worst-case wait states: safe for every frequency used below */
     err = set_flash_latency(FLASH_MAX_WS);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
 
     /* 2. Fall back to HSI16 so the PLL and HSE can be reprogrammed */
     err = rcc_osc_on(RCC_OSC_HSI16);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | RCC_CFGR_SW_HSI;
     err = wait_bits(&RCC->CFGR, RCC_CFGR_SWS, RCC_CFGR_SWS_HSI, TIMEOUT_LOOPS, ERR_RCC_SWITCH_TIMEOUT);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;   /* still on the old clock: SystemCoreClock is still right */
+    }
+    SystemCoreClock = rcc_get_hclk_hz();   /* HSI16 with the old AHB prescaler */
 
     err = pll_off();
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return fallback_hsi(err);
+    }
 
     /* 3. HSE (bypass can only change while HSE is off) */
     if(uses_hse){
@@ -395,11 +438,15 @@ err_t rcc_clock_config(const rcc_clock_config_t *config){
         if((RCC->CR & RCC_CR_HSEBYP) != want_byp){
             RCC->CR &= ~RCC_CR_HSEON;
             err = wait_bits(&RCC->CR, RCC_CR_HSERDY, 0U, TIMEOUT_LOOPS, ERR_RCC_HSE_TIMEOUT);
-            if(err != ERR_OK) return err;
+            if(err != ERR_OK){
+                return fallback_hsi(err);
+            }
             RCC->CR = (RCC->CR & ~RCC_CR_HSEBYP) | want_byp;
         }
         err = rcc_osc_on(RCC_OSC_HSE);
-        if(err != ERR_OK) return err;
+        if(err != ERR_OK){
+            return fallback_hsi(err);
+        }
         s_hse_hz = config->hse_hz;
     }
 
@@ -410,7 +457,7 @@ err_t rcc_clock_config(const rcc_clock_config_t *config){
         err = wait_bits(&RCC->CR, RCC_CR_PLLRDY, RCC_CR_PLLRDY, TIMEOUT_LOOPS, ERR_RCC_PLL_TIMEOUT);
         if(err != ERR_OK){
             (void)pll_off();
-            return err;
+            return fallback_hsi(err);
         }
     }
 
@@ -418,7 +465,9 @@ err_t rcc_clock_config(const rcc_clock_config_t *config){
     (void)rcc_periph_clock_enable(RCC_PERIPH_PWR);
     PWR->CR1 = (PWR->CR1 & ~PWR_CR1_VOS) | PWR_CR1_VOS_0;
     err = wait_bits(&PWR->SR2, PWR_SR2_VOSF, 0U, TIMEOUT_LOOPS, ERR_RCC_VOS_TIMEOUT);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return fallback_hsi(err);
+    }
     if(boost){
         PWR->CR5 &= ~PWR_CR5_R1MODE;
     } else {
@@ -444,17 +493,22 @@ err_t rcc_clock_config(const rcc_clock_config_t *config){
     }
     RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_SW) | sw;
     err = wait_bits(&RCC->CFGR, RCC_CFGR_SWS, sws, TIMEOUT_LOOPS, ERR_RCC_SWITCH_TIMEOUT);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return fallback_hsi(err);
+    }
 
     if(ahb_step){
         delay_loops(200U);   /* >= 1 us at up to 170 MHz */
         RCC->CFGR = (RCC->CFGR & ~RCC_CFGR_HPRE) | ((uint32_t)config->ahb_div << RCC_CFGR_HPRE_Pos);
     }
+    SystemCoreClock = hclk;   /* new clock is live from here on */
 
     /* 8. Lowest wait states for the final HCLK, then prefetch + caches */
     uint32_t ws = (hclk - 1U) / (boost ? WS_STEP_BOOST_HZ : WS_STEP_NORMAL_HZ);
     err = set_flash_latency(ws);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     FLASH->ACR |= FLASH_ACR_PRFTEN | FLASH_ACR_ICEN | FLASH_ACR_DCEN;
 
     /* 9. PLL is only kept running when it drives SYSCLK */
@@ -462,7 +516,6 @@ err_t rcc_clock_config(const rcc_clock_config_t *config){
         (void)pll_off();
     }
 
-    SystemCoreClock = hclk;
     return ERR_OK;
 }
 

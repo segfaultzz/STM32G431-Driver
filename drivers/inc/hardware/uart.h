@@ -38,7 +38,7 @@ typedef enum {
 
 typedef struct {
   uint32_t baud;
-  uint8_t data_bits; /* 7, 8 or 9; data_bits + parity bit must be 7..9 */
+  uint8_t data_bits; /* 7 or 8 (parity, if any, is an extra bit on top) */
   uart_parity_t parity;
   uart_stop_t stop;
   uart_clk_t clock;

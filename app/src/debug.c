@@ -16,7 +16,9 @@ static SemaphoreHandle_t s_lock;
 
 err_t debug_init(uint32_t baud){
     err_t err = rcc_periph_clock_enable(RCC_PERIPH_GPIOA);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
 
     const gpio_config_t tx = {
         .pins = DEBUG_TX_PIN, .mode = GPIO_MODE_AF, .pull = GPIO_PULL_NONE,
@@ -27,17 +29,25 @@ err_t debug_init(uint32_t baud){
         .otype = GPIO_OTYPE_PUSH_PULL, .speed = GPIO_SPEED_LOW, .af = DEBUG_GPIO_AF,
     };
     err = gpio_init(DEBUG_GPIO_PORT, &tx);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     err = gpio_init(DEBUG_GPIO_PORT, &rx);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
 
     const uart_config_t cfg = UART_CONFIG_8N1(baud);
     err = uart_init(DEBUG_UART, &cfg);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
 
     if(s_lock == NULL){
         s_lock = xSemaphoreCreateMutex();   /* heap works before the scheduler */
-        if(s_lock == NULL) return ERR_BUSY;
+        if(s_lock == NULL){
+            return ERR_BUSY;
+        }
     }
     s_ready = true;
     return ERR_OK;

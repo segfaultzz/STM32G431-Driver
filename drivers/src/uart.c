@@ -94,11 +94,15 @@ static err_t kernel_clock_hz(const uart_hw_t *hw, uart_clk_t clk, uint32_t *hz){
         *hz = rcc_get_sysclk_hz();
         return ERR_OK;
     case UART_CLK_HSI16:
-        if(!rcc_osc_is_ready(RCC_OSC_HSI16)) return ERR_UART_BAD_CLOCK;
+        if(!rcc_osc_is_ready(RCC_OSC_HSI16)){
+            return ERR_UART_BAD_CLOCK;
+        }
         *hz = HSI16_HZ;
         return ERR_OK;
     case UART_CLK_LSE:
-        if(!rcc_osc_is_ready(RCC_OSC_LSE)) return ERR_UART_BAD_CLOCK;
+        if(!rcc_osc_is_ready(RCC_OSC_LSE)){
+            return ERR_UART_BAD_CLOCK;
+        }
         *hz = LSE_HZ;
         return ERR_OK;
     default:
@@ -136,6 +140,10 @@ static err_t frame_bits(const uart_config_t *c, uint32_t *cr1){
     if(c->parity > UART_PARITY_ODD || c->stop > UART_STOP_2){
         return ERR_UART_BAD_FORMAT;
     }
+    /* The data path moves uint8_t: 9 data bits wouldn't fit */
+    if(c->data_bits != 7U && c->data_bits != 8U){
+        return ERR_UART_BAD_FORMAT;
+    }
     uint32_t total = c->data_bits + (c->parity != UART_PARITY_NONE ? 1U : 0U);
     uint32_t v;
     switch(total){
@@ -166,18 +174,28 @@ err_t uart_init(USART_TypeDef *uart, const uart_config_t *config){
     /* Validate everything before touching the hardware */
     uint32_t cr1;
     err_t err = frame_bits(config, &cr1);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     uint32_t clk_hz;
     err = kernel_clock_hz(hw, config->clock, &clk_hz);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     uint32_t brr;
     err = baud_divider(hw, clk_hz, config->baud, &brr);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
 
     err = rcc_periph_clock_enable(hw->periph);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     err = rcc_periph_reset(hw->periph);   /* start from reset values */
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
 
     /* Kernel clock selection: RCC_CCIPR is shared, so update it atomically */
     uint32_t primask = __get_PRIMASK();
@@ -213,7 +231,9 @@ err_t uart_deinit(USART_TypeDef *uart){
     }
     uart->CR1 = 0U;
     err_t err = rcc_periph_reset(hw->periph);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     return rcc_periph_clock_disable(hw->periph);
 }
 
@@ -222,7 +242,9 @@ err_t uart_deinit(USART_TypeDef *uart){
  * ------------------------------------------------------------------------- */
 err_t uart_write(USART_TypeDef *uart, const void *data, size_t len, uint32_t timeout_ms){
     err_t err = check_ready(uart);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     if(data == NULL && len != 0U){
         return ERR_NULL_PTR;
     }
@@ -242,7 +264,9 @@ err_t uart_write(USART_TypeDef *uart, const void *data, size_t len, uint32_t tim
 
 err_t uart_flush(USART_TypeDef *uart, uint32_t timeout_ms){
     err_t err = check_ready(uart);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     timeout_t t;
     timeout_start(&t, timeout_ms);
     while(!(uart->ISR & USART_ISR_TC)){
@@ -278,16 +302,25 @@ static err_t take_line_error(USART_TypeDef *uart){
 
 err_t uart_getc(USART_TypeDef *uart, uint8_t *byte){
     err_t err = check_ready(uart);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     if(byte == NULL){
         return ERR_NULL_PTR;
     }
     err = take_line_error(uart);
-    if(err != ERR_OK) return err;
+    if(err != ERR_OK){
+        return err;
+    }
     if(!(uart->ISR & USART_ISR_RXNE_RXFNE)){
         return ERR_UART_RX_EMPTY;
     }
-    *byte = (uint8_t)uart->RDR;
+    /* With parity on, the MSB of the frame is the parity bit: strip it.
+     * Frame length from CR1: M1 -> 7 bits, M0 -> 9 bits, neither -> 8 bits. */
+    uint32_t cr1 = uart->CR1;
+    uint32_t frame = (cr1 & USART_CR1_M1) ? 7U : ((cr1 & USART_CR1_M0) ? 9U : 8U);
+    uint32_t data_bits = frame - ((cr1 & USART_CR1_PCE) ? 1U : 0U);
+    *byte = (uint8_t)(uart->RDR & ((1UL << data_bits) - 1U));
     return ERR_OK;
 }
 

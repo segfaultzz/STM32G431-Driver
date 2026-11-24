@@ -160,8 +160,11 @@ err_t gpio_toggle_pin(GPIO_TypeDef *port, uint16_t pin);
 /**
  * @brief Locks the specified GPIO pin.
  * @param port: Pointer to the GPIO port (e.g., GPIOA, GPIOB, etc.).
- * @param pin: The pin to lock.
- * @return ERR_OK if successful, or an error code otherwise.
+ * @param pin: The pin(s) to lock.
+ * @return ERR_OK if the pins are locked, ERR_GPIO_LOCK_FAILED otherwise.
+ * @note The lock can only be applied once per port until reset: lock all
+ *       pins of a port in a single call. A later call for other pins on the
+ *       same port returns ERR_GPIO_LOCK_FAILED.
  */
 err_t gpio_lock_pin(GPIO_TypeDef *port, uint16_t pin);
 /**

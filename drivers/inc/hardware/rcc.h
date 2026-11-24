@@ -184,7 +184,10 @@ extern "C" {
  *         returned before any register is touched, or a hardware timeout
  *         (ERR_RCC_HSE_TIMEOUT, ERR_RCC_PLL_TIMEOUT, ERR_RCC_SWITCH_TIMEOUT,
  *         ERR_RCC_FLASH_LATENCY, ERR_RCC_VOS_TIMEOUT...), after which the
- *         system is left running from HSI16.
+ *         system is left running from HSI16 (flash at maximum wait states).
+ *         Exception: ERR_RCC_FLASH_LATENCY at the very end means the new
+ *         clock is running but flash stays at maximum wait states.
+ *         SystemCoreClock always matches the clock actually running.
  *
  * @warning Call before vTaskStartScheduler(): FreeRTOS programs SysTick from
  *          SystemCoreClock at scheduler start, and baud rates / timer settings
